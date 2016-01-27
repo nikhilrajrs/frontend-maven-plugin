@@ -1,6 +1,10 @@
 package com.github.eirslett.maven.plugins.frontend.mojo;
 
-import com.github.eirslett.maven.plugins.frontend.lib.ProxyConfig;
+import java.io.File;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.settings.Proxy;
@@ -10,22 +14,23 @@ import org.apache.maven.settings.crypto.SettingsDecryptionResult;
 import org.codehaus.plexus.util.Scanner;
 import org.sonatype.plexus.build.incremental.BuildContext;
 
-import java.io.File;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import com.github.eirslett.maven.plugins.frontend.lib.ProxyConfig;
 
 class MojoUtils {
+
+    private static enum SCHEMES {
+        http, https, ftp
+    }
+
     static <E extends Throwable> MojoFailureException toMojoFailureException(E e) {
         return new MojoFailureException(e.getMessage() + ": " + e.getCause().getMessage(), e);
     }
 
     static ProxyConfig getProxyConfig(MavenSession mavenSession, SettingsDecrypter decrypter) {
-        if (mavenSession == null ||
-                mavenSession.getSettings() == null ||
-                mavenSession.getSettings().getProxies() == null ||
-                mavenSession.getSettings().getProxies().isEmpty()) {
-            return new ProxyConfig(Collections.<ProxyConfig.Proxy>emptyList());
+        if ((mavenSession == null) || (mavenSession.getSettings() == null)
+                || (mavenSession.getSettings().getProxies() == null)
+                || mavenSession.getSettings().getProxies().isEmpty()) {
+            return new ProxyConfig(Collections.<ProxyConfig.Proxy> emptyList());
         } else {
             final List<Proxy> mavenProxies = mavenSession.getSettings().getProxies();
 
@@ -34,8 +39,11 @@ class MojoUtils {
             for (Proxy mavenProxy : mavenProxies) {
                 if (mavenProxy.isActive()) {
                     mavenProxy = decryptProxy(mavenProxy, decrypter);
-                    proxies.add(new ProxyConfig.Proxy(mavenProxy.getId(), mavenProxy.getProtocol(), mavenProxy.getHost(),
-                            mavenProxy.getPort(), mavenProxy.getUsername(), mavenProxy.getPassword(), mavenProxy.getNonProxyHosts()));
+                    for (SCHEMES scheme : SCHEMES.values()) {
+                        proxies.add(new ProxyConfig.Proxy(mavenProxy.getId(), scheme.name(), mavenProxy.getHost(),
+                                mavenProxy.getPort(), mavenProxy.getUsername(), mavenProxy.getPassword(), mavenProxy
+                                        .getNonProxyHosts()));
+                    }
                 }
             }
 
@@ -51,27 +59,27 @@ class MojoUtils {
 
     static boolean shouldExecute(BuildContext buildContext, List<File> triggerfiles, File srcdir) {
 
-    // If there is no buildContext, or this is not an incremental build, always execute.
-    if (buildContext == null || !buildContext.isIncremental()) {
-      return true;
-    }
-
-    if (triggerfiles != null) {
-      for (File triggerfile : triggerfiles) {
-        if (buildContext.hasDelta(triggerfile)) {
-          return true;
+        // If there is no buildContext, or this is not an incremental build, always execute.
+        if ((buildContext == null) || !buildContext.isIncremental()) {
+            return true;
         }
-      }
-    }
 
-    if (srcdir == null) {
-      return true;
-    }
+        if (triggerfiles != null) {
+            for (File triggerfile : triggerfiles) {
+                if (buildContext.hasDelta(triggerfile)) {
+                    return true;
+                }
+            }
+        }
 
-    // Check for changes in the srcdir
-    Scanner scanner = buildContext.newScanner(srcdir);
-    scanner.scan();
-    String[] includedFiles = scanner.getIncludedFiles();
-    return (includedFiles != null && includedFiles.length > 0);
-  }
+        if (srcdir == null) {
+            return true;
+        }
+
+        // Check for changes in the srcdir
+        Scanner scanner = buildContext.newScanner(srcdir);
+        scanner.scan();
+        String[] includedFiles = scanner.getIncludedFiles();
+        return ((includedFiles != null) && (includedFiles.length > 0));
+    }
 }
